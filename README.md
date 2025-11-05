@@ -1,0 +1,138 @@
+
+# stablehlopt
+
+Helper utilities around the `stablehlo-opt` binary bundled with this
+package.
+
+## Installation
+
+You can install the development version of stablehlopt from
+[GitHub](https://github.com/) with:
+
+``` r
+# install.packages("pak")
+pak::pak("r-xla/stablehlopt")
+```
+
+## Quick example
+
+``` r
+binary <- stablehlopt::stablehlopt_bin()
+input  <- tempfile(fileext = ".mlir")
+
+mlir_module <- c(
+  "module {",
+  "  func.func @fold_constants() -> tensor<2xf32> {",
+  "    %cst0 = stablehlo.constant dense<[1.0, 2.0]> : tensor<2xf32>",
+  "    %cst1 = stablehlo.constant dense<[3.0, 4.0]> : tensor<2xf32>",
+  "    %sum = stablehlo.add %cst0, %cst1 : tensor<2xf32>",
+  "    return %sum : tensor<2xf32>",
+  "  }",
+  "}"
+)
+
+writeLines(mlir_module, input)
+
+system2(
+  command = binary,
+  args = c(
+    "--stablehlo-target-independent-optimization",
+    input
+  ),
+  stdout = TRUE
+)
+#> [1] "module {"                                                                         
+#> [2] "  func.func @fold_constants() -> tensor<2xf32> {"                                 
+#> [3] "    %cst = stablehlo.constant dense<[4.000000e+00, 6.000000e+00]> : tensor<2xf32>"
+#> [4] "    return %cst : tensor<2xf32>"                                                  
+#> [5] "  }"                                                                              
+#> [6] "}"                                                                                
+#> [7] ""
+```
+
+At runtime the package will download a prebuilt `stablehlo-opt` binary
+when it is missing locally. The helper above obtains the path to the
+executable and shows how you can run it from R with `system2()` and then
+inspect the transformed IR produced by the target-independent
+optimization pipeline, which in this case folds the constant addition
+into a single literal.
+
+## StableHLO passes
+
+`stablehlo-opt --help` lists every available optimization pass. The
+StableHLO specific passes currently bundled with the binary shipped in
+this package are:
+
+- `--stablehlo-aggressive-folder` – fold StableHLO operations
+- `--stablehlo-aggressive-simplification` – canonicalize StableHLO
+  operations
+- `--stablehlo-canonicalize-dynamism` – rewrite dynamic ops into static
+  forms
+- `--stablehlo-check-shape-assertions` – validate
+  `stablehlo.custom_call @shape_assertion`
+- `--stablehlo-compatibility-expander` – expand ops for wider
+  compatibility
+- `--stablehlo-complex-math-expander` – rewrite complex math operations
+- `--stablehlo-convert-to-signless` – convert integers to signless
+  variants
+- `--stablehlo-legalize-composite-to-call` – replace composite ops with
+  their call-based decompositions
+- `--stablehlo-legalize-deprecated-ops` – legalize deprecated ops to
+  supported forms
+- `--stablehlo-legalize-qdq-to-quantized-op` – fuse
+  dequantize/op/quantize patterns into quantized ops
+- `--stablehlo-legalize-quant-to-math` – rewrite quantized ops into
+  primitive math
+- `--stablehlo-legalize-quantized-op-to-qdq` – expand quantized ops back
+  into dequantize/op/quantize sequences
+- `--stablehlo-legalize-to-linalg` – lower StableHLO to the Linalg
+  dialect
+- `--stablehlo-legalize-to-tosa` – lower StableHLO to the TOSA dialect
+- `--stablehlo-legalize-to-vhlo` – lower StableHLO to VHLO
+- `--stablehlo-prepare-for-tosa` – prepare programs for TOSA
+  legalization
+- `--stablehlo-quant-legalize-to-tosa-rescale` – map quantized ops to
+  TOSA rescale
+- `--stablehlo-refine-arguments` – refine shapes of entry function
+  arguments
+- `--stablehlo-refine-shapes` – propagate shape refinements throughout
+  the module
+- `--stablehlo-target-independent-optimization` – run target-independent
+  canonicalizations and folds
+- `--stablehlo-wrap-in-composite` – wrap standalone ops in composite ops
+- `--stablehlo-deserialize` – example pipeline for deserializing
+  StableHLO modules
+
+You can extract the list programmatically, for example:
+
+``` r
+help_lines <- system2(
+  command = stablehlopt::stablehlopt_bin(),
+  args = "--help",
+  stdout = TRUE
+)
+stablehlo_passes <- help_lines[grepl("--stablehlo", help_lines, fixed = TRUE)]
+cat(stablehlo_passes, sep = "\n")
+#>       --stablehlo-aggressive-folder                          -   Folds StableHLO operations
+#>       --stablehlo-aggressive-simplification                  -   Canonicalizes StableHLO operations
+#>       --stablehlo-canonicalize-dynamism                      -   Canonicalizes dynamic StableHLO ops into static ops.
+#>       --stablehlo-check-shape-assertions                     -   Check stablehlo.custom_call @shape_assertion ops.
+#>       --stablehlo-compatibility-expander                     -   Compatibility expander for StableHLO operations.
+#>       --stablehlo-complex-math-expander                      -   Expander for StableHLO complex math operations.
+#>       --stablehlo-convert-to-signless                        -   Pass to transform the IR to be on signless integers.
+#>       --stablehlo-legalize-composite-to-call                 -   Replaces composite ops with a call to their decomposition.
+#>       --stablehlo-legalize-deprecated-ops                    -   Legalize deprecated ops to well-supported ops.
+#>       --stablehlo-legalize-qdq-to-quantized-op               -   Fuse (de-quantize, floating-point operation and quantize) pattern into StableHLO quantized operation
+#>       --stablehlo-legalize-quant-to-math                     -   Convert from StableHLO quantized ops to StableHLO primitive math ops.
+#>       --stablehlo-legalize-quantized-op-to-qdq               -   Decompose quantized StableHLO operation to (de-quantize, floating-point operation and quantize) pattern.
+#>       --stablehlo-legalize-to-linalg                         -   Legalize StableHLO to LinAlg
+#>       --stablehlo-legalize-to-tosa                           -   Legalize StableHLO to TOSA
+#>       --stablehlo-legalize-to-vhlo                           -   Legalize StableHLO to VHLO.
+#>       --stablehlo-prepare-for-tosa                           -   Prepare StableHLO for legalization to TOSA
+#>       --stablehlo-quant-legalize-to-tosa-rescale             -   Legalize StableHLO Quantized operations to TOSA rescale operations
+#>       --stablehlo-refine-arguments                           -   Refines the argument shapes of the main function.
+#>       --stablehlo-refine-shapes                              -   Refines shapes across a StableHLO program.
+#>       --stablehlo-target-independent-optimization            -   Runs canonicalizers, folders, and other target-independent optimizations.
+#>       --stablehlo-wrap-in-composite                          -   Wraps a non-composite  StableHLO op in a composite op.
+#>       --stablehlo-deserialize                                -   Run an example pipeline.
+```
